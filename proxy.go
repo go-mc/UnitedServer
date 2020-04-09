@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/Tnze/go-mc/chat"
 	mcnet "github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
 	log "github.com/sirupsen/logrus"
@@ -11,15 +12,62 @@ import (
 )
 
 func handleConn(c *mcnet.Conn) {
-	p := Player{
-		Conn: c,
-		Name: "Tnze",
-	}
-	_, err := p.Connect("localhost:25565")
+	loge := log.WithField("addr", c.Socket.RemoteAddr())
+	defer c.Close()
+	// handshake
+	_, _, intention, err := recvHandshake(c)
 	if err != nil {
-		log.WithError(err).Error("Connect server error")
+		loge.WithError(err).Error("Handshake error")
 	}
-	//select{}
+	switch intention {
+	case 0x01:
+		if err := Status(c); err != nil {
+			loge.WithError(err).Error("Send status packet error")
+		}
+	case 0x02:
+		// client login
+		p, err := Login(c)
+		if err != nil {
+			loge.WithError(err).Error("Player login fail")
+		}
+		_, err = p.Connect("localhost:25565")
+		if err != nil {
+			loge.WithError(err).Error("Connect server error")
+		}
+	default:
+		loge.WithField("intention", intention).Error("Unknown intention in handshake")
+		_ = c.WritePacket(pk.Marshal(0x00, chat.Message{Text: fmt.Sprintf("unknown intention 0x%x in handshake", intention)}))
+	}
+}
+
+func recvHandshake(c *mcnet.Conn) (address pk.String, port pk.UnsignedShort, intention pk.Byte, err error) {
+	var p pk.Packet
+	if p, err = c.ReadPacket(); err != nil {
+		return
+	}
+	if p.ID != 0x00 {
+		err = errors.New("not a handshake packet")
+		return
+	}
+	var version pk.VarInt
+	if err = p.Scan(&version, &address, &port, &intention); err != nil {
+		return
+	}
+	// check protocol version
+	if version < ProtocolVersion {
+		err = c.WritePacket(pk.Marshal(0x00, chat.Message{Translate: "multiplayer.disconnect.outdated_client"}))
+	} else if version > ProtocolVersion {
+		err = c.WritePacket(pk.Marshal(0x00, chat.Message{Translate: "multiplayer.disconnect.outdated_server"}))
+	} else {
+		return // all right
+	}
+	// version different
+	if err != nil {
+		err = fmt.Errorf("sending disconnect packet error: %w", err)
+		return
+	}
+	err = errors.New("different protocol version")
+	return
 }
 
 type Player struct {
