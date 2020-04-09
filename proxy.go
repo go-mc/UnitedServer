@@ -30,10 +30,13 @@ func handleConn(c *mcnet.Conn) {
 		if err != nil {
 			loge.WithError(err).Error("Player login fail")
 		}
-		_, err = p.Connect("localhost:25565")
+		s, err := p.Connect("localhost:25565")
 		if err != nil {
 			loge.WithError(err).Error("Connect server error")
 		}
+		stop := make(chan struct{})
+		stoped := p.JoinServer(stop, s)
+		<-stoped
 	default:
 		loge.WithField("intention", intention).Error("Unknown intention in handshake")
 		_ = c.WritePacket(pk.Marshal(0x00, chat.Message{Text: fmt.Sprintf("unknown intention 0x%x in handshake", intention)}))
@@ -154,4 +157,50 @@ func (p *Player) Connect(serverAddr string) (*Server, error) {
 			//}
 		}
 	}
+}
+
+// connect a player and server
+// to stop this, close "stop chan"
+// after completely stop, the returned chan will be closed.
+func (p *Player) JoinServer(stop <-chan struct{}, s *Server) <-chan struct{} {
+	ret := make(chan struct{})
+	s1 := make(chan struct{})
+	go func() {
+		for {
+			select {
+			default:
+				packet, err := s.sonn.ReadPacket()
+				if err != nil {
+					log.WithError(err).Error("recv target server packet error")
+					return
+				}
+				if err := p.WritePacket(packet); err != nil {
+					log.WithError(err).Error("send packet to client error")
+				}
+			case <-stop:
+				s1 <- struct{}{}
+				return
+			}
+		}
+	}()
+	go func() {
+		for {
+			select {
+			default:
+				packet, err := p.ReadPacket()
+				if err != nil {
+					log.WithError(err).Error("recv client packet error")
+					return
+				}
+				if err := s.sonn.WritePacket(packet); err != nil {
+					log.WithError(err).Error("send packet to target server error")
+				}
+			case <-stop:
+				<-s1
+				close(ret)
+				return
+			}
+		}
+	}()
+	return ret
 }

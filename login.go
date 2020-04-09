@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/Tnze/go-mc/bot"
 	"github.com/Tnze/go-mc/chat"
 	"github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
@@ -53,10 +55,25 @@ func Status(conn *net.Conn) error {
 	return nil
 }
 
-func Login(conn *net.Conn) (Player, error) {
+func Login(conn *net.Conn) (*Player, error) {
+	var name pk.String
+	// LoginStart
+	p, err := conn.ReadPacket()
+	if err != nil {
+		return nil, fmt.Errorf("recv LoginStart pk error: %w", err)
+	}
+	if err := p.Scan(&name); err != nil {
+		return nil, fmt.Errorf("scan LoginStart pk error: %w", err)
+	}
+	// LoginSuccess
+	err = conn.WritePacket(pk.Marshal(0x02,
+		pk.String(bot.OfflineUUID(string(name)).String()), name))
+	if err != nil {
+		return nil, err
+	}
 
-	return Player{
+	return &Player{
 		Conn: conn,
-		Name: "",
+		Name: string(name),
 	}, nil
 }
