@@ -4,11 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Tnze/go-mc/chat"
+	"github.com/Tnze/go-mc/data"
 	mcnet "github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
 	log "github.com/sirupsen/logrus"
 	"net"
 	"strconv"
+	"strings"
+	"time"
 )
 
 func handleConn(c *mcnet.Conn) {
@@ -36,7 +39,24 @@ func handleConn(c *mcnet.Conn) {
 		}
 		stop := make(chan struct{})
 		stoped := p.JoinServer(stop, s)
-		<-stoped
+		wait := time.After(time.Second * 10)
+		for {
+			select {
+			case <-stoped:
+				return
+			case <-wait:
+				s, err := p.Connect("localhost:25567")
+				if err != nil {
+					loge.WithError(err).Error("Connect server error")
+				}
+				close(stop)
+				<-stoped
+				p.SwitchTo(s)
+				stop = make(chan struct{})
+				stoped = p.JoinServer(stop, s)
+			}
+		}
+
 	default:
 		loge.WithField("intention", intention).Error("Unknown intention in handshake")
 		_ = c.WritePacket(pk.Marshal(0x00, chat.Message{Text: fmt.Sprintf("unknown intention 0x%x in handshake", intention)}))
@@ -176,6 +196,7 @@ func (p *Player) JoinServer(stop <-chan struct{}, s *Server) <-chan struct{} {
 				}
 				if err := p.WritePacket(packet); err != nil {
 					log.WithError(err).Error("send packet to client error")
+					return
 				}
 			case <-stop:
 				s1 <- struct{}{}
@@ -192,8 +213,21 @@ func (p *Player) JoinServer(stop <-chan struct{}, s *Server) <-chan struct{} {
 					log.WithError(err).Error("recv client packet error")
 					return
 				}
+				// handle command
+				if packet.ID == data.ChatMessageServerbound {
+					var msg pk.String
+					if err := packet.Scan(&msg); err != nil {
+						log.WithError(err).Error("handle chat message error")
+						return
+					}
+					if strings.HasPrefix(string(msg), "/server") {
+						log.Infof("<%s> %s", p.Name, msg)
+						continue
+					}
+				}
 				if err := s.sonn.WritePacket(packet); err != nil {
 					log.WithError(err).Error("send packet to target server error")
+					return
 				}
 			case <-stop:
 				<-s1
@@ -203,4 +237,58 @@ func (p *Player) JoinServer(stop <-chan struct{}, s *Server) <-chan struct{} {
 		}
 	}()
 	return ret
+}
+
+func (p *Player) SwitchTo(s *Server) {
+	packet, err := s.sonn.ReadPacket()
+	if err != nil {
+		log.WithError(err).Error("Read JoinGame packet error")
+		return
+	}
+	if packet.ID != data.JoinGame {
+		log.WithField("pid", packet.ID).Warn("Received packet is not JoinGame pk")
+		return
+	}
+	var (
+		EID           pk.Int
+		Gamemode      pk.UnsignedByte
+		Dimension     pk.Int
+		HashSeed      pk.Long
+		MaxPlayers    pk.UnsignedByte
+		LevelType     pk.String
+		ViewDistance  pk.VarInt
+		DebugInfo     pk.Boolean
+		RespawnScreen pk.Boolean
+	)
+	if err := packet.Scan(&EID, &Gamemode, &Dimension, &HashSeed, &MaxPlayers, &LevelType, &ViewDistance,
+		&DebugInfo, &RespawnScreen); err != nil {
+		log.WithError(err).Error("Scan JoinGame packet error")
+	}
+	log.WithFields(log.Fields{
+		"EID":           EID,
+		"Gamemode":      Gamemode,
+		"Dimension":     Dimension,
+		"HashSeed":      HashSeed,
+		"MaxPlayers":    MaxPlayers,
+		"LevelType":     LevelType,
+		"ViewDistance":  ViewDistance,
+		"DebugInfo":     DebugInfo,
+		"RespawnScreen": RespawnScreen,
+	}).Info("Received JoinGame packet")
+
+	if err := p.WritePacket(pk.Marshal(
+		data.Respawn,
+		pk.Int(1), HashSeed, Gamemode, LevelType,
+	)); err != nil {
+		log.WithError(err).Error("Write Respawn packet error")
+		return
+	}
+
+	if err := p.WritePacket(pk.Marshal(
+		data.Respawn,
+		Dimension, HashSeed, Gamemode, LevelType,
+	)); err != nil {
+		log.WithError(err).Error("Write Respawn packet error")
+		return
+	}
 }
