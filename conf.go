@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-var config struct {
+var conf struct {
 	DebugMode   bool
 	MaxPlayers  int
 	ListenAddr  string
@@ -14,13 +14,13 @@ var config struct {
 }
 
 func parseConf() {
-	pflag.BoolVar(&config.DebugMode, "DebugMode", false, "Start in debug mode")
-	pflag.IntVar(&config.MaxPlayers, "MaxPlayers", 20, "Max connections `number`")
-	pflag.StringVar(&config.ListenAddr, "ListenAddr", ":25565", "`ip`:port")
-	pflag.StringVar(&config.LobbyServer, "LobbyServer", "localhost:25566", "The first server `ip` player joined")
+	pflag.BoolVar(&conf.DebugMode, "DebugMode", false, "Start in debug mode")
+	pflag.IntVar(&conf.MaxPlayers, "MaxPlayers", 20, "Max connections `number`")
+	pflag.StringVar(&conf.ListenAddr, "ListenAddr", ":25565", "`ip`:port")
+	pflag.StringVar(&conf.LobbyServer, "LobbyServer", "localhost:25566", "The first server `ip` player joined")
 	pflag.Parse()
 	err := viper.BindPFlags(pflag.CommandLine)
 	if err != nil {
-		log.Fatal()
+		log.Fatal("Fatal error parse arg: %s \n", err)
 	}
 }

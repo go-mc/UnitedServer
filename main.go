@@ -15,7 +15,7 @@ const ProtocolVersion = 578
 
 func main() {
 	parseConf()
-	if config.DebugMode {
+	if conf.DebugMode {
 		log.SetLevel(log.DebugLevel)
 		log.SetFormatter(&log.TextFormatter{ForceColors: true})
 		log.SetOutput(ansicolor.NewAnsiColorWriter(os.Stdout))
