@@ -1,4 +1,4 @@
-module github.com/go-mc/MCServerSwitch
+module github.com/go-mc/UnitedServer
 
 go 1.14
 
