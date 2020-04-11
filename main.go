@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"github.com/Tnze/go-mc/net"
 	"github.com/shiena/ansicolor"
 	log "github.com/sirupsen/logrus"
@@ -14,6 +16,14 @@ const ProtocolVersion = 578
 
 func main() {
 	parseConf()
+	if conf.HelpInf {
+		fmt.Println("UnitedServer")
+		fmt.Println("ProtocolVersion:", ProtocolVersion)
+		fmt.Println("Usage: UnitedServer [options] <value>")
+		fmt.Println("Options:")
+		flag.PrintDefaults()
+		return
+	}
 	if conf.DebugMode {
 		log.SetLevel(log.DebugLevel)
 		log.SetFormatter(&log.TextFormatter{ForceColors: true})
