@@ -74,7 +74,8 @@ func recvHandshake(c *mcnet.Conn) (address pk.String, port pk.UnsignedShort, int
 
 type Player struct {
 	*mcnet.Conn
-	Name string
+	Name      string
+	Dimension int32
 }
 
 type Server struct {
@@ -92,8 +93,8 @@ func (p *Player) Start(ctx context.Context, loge *log.Entry) {
 		subCtx, cancel := context.WithCancel(ctx)
 		go func(server *Server, err chan [2]error) {
 			loge = loge.WithField("server", server.Socket.RemoteAddr())
-			loge.Info("Player join game")
-			errChan <- p.JoinServer(subCtx, server, cmdHandler(cmdChan), nil)()
+			loge.Info("Player join server")
+			errChan <- p.JoinServer(subCtx, server, cmdHandler(cmdChan, loge), dimRecorder(&p.Dimension))()
 			_ = server.Close()
 			loge.Debug("Disconnect server")
 		}(server, errChan)
@@ -116,13 +117,15 @@ func (p *Player) Start(ctx context.Context, loge *log.Entry) {
 				loge.WithField("errs", errs).Error("Transmit packets error")
 				return
 			case <-ctx.Done():
+				_ = p.WritePacket(pk.Marshal(data.DisconnectPlay,
+					chat.Message{Translate: "multiplayer.disconnect.server_shutdown"}))
 				return
 			}
 		}
 	}
 }
 
-func cmdHandler(cmdChan chan string) middleFunc {
+func cmdHandler(cmdChan chan string, loge *log.Entry) middleFunc {
 	return func(packet pk.Packet) (pass bool, err error) {
 		// handle command
 		if packet.ID == data.ChatMessageServerbound {
@@ -131,7 +134,7 @@ func cmdHandler(cmdChan chan string) middleFunc {
 				return false, errors.New("handle chat message error")
 			}
 			if strings.HasPrefix(string(msg), "/connect ") {
-				log.Infof("%s", msg)
+				loge.WithField("cmd", msg).Debug("Player issued a command")
 				select { // non-blocking send
 				case cmdChan <- strings.TrimPrefix(string(msg), "/connect "):
 				default:
@@ -140,6 +143,18 @@ func cmdHandler(cmdChan chan string) middleFunc {
 			}
 		}
 		return true, nil
+	}
+}
+
+func dimRecorder(dim *int32) middleFunc {
+	return func(packet pk.Packet) (pass bool, err error) {
+		switch packet.ID {
+		case data.JoinGame:
+			err = packet.Scan(new(pk.Int), new(pk.UnsignedByte), (*pk.Int)(dim))
+		case data.Respawn:
+			err = packet.Scan((*pk.Int)(dim))
+		}
+		return true, err
 	}
 }
 
@@ -297,31 +312,27 @@ func (p *Player) SwitchTo(s *Server) {
 		&DebugInfo, &RespawnScreen); err != nil {
 		log.WithError(err).Error("Scan JoinGame packet error")
 	}
-	log.WithFields(log.Fields{
-		"EID":           EID,
-		"Gamemode":      Gamemode,
-		"Dimension":     Dimension,
-		"HashSeed":      HashSeed,
-		"MaxPlayers":    MaxPlayers,
-		"LevelType":     LevelType,
-		"ViewDistance":  ViewDistance,
-		"DebugInfo":     DebugInfo,
-		"RespawnScreen": RespawnScreen,
-	}).Info("Received JoinGame packet")
+
+	if int32(Dimension) == p.Dimension {
+		// client programs cannot re-spawn to the same dimension they are already in.
+		// so we send a extra Respawn packet to respawn them to another dimension first.
+		otherDim := pk.Int(0)
+		if otherDim == Dimension {
+			otherDim = 1
+		}
+		if err := p.WritePacket(pk.Marshal(
+			data.Respawn, otherDim, HashSeed, Gamemode, LevelType,
+		)); err != nil {
+			log.WithError(err).Error("Write extra Respawn packet error")
+			return
+		}
+	}
 
 	if err := p.WritePacket(pk.Marshal(
-		data.Respawn,
-		pk.Int(1), HashSeed, Gamemode, LevelType, // TODO: 修改为使用一个与当前不通的维度
+		data.Respawn, Dimension, HashSeed, Gamemode, LevelType,
 	)); err != nil {
 		log.WithError(err).Error("Write Respawn packet error")
 		return
 	}
-
-	if err := p.WritePacket(pk.Marshal(
-		data.Respawn,
-		Dimension, HashSeed, Gamemode, LevelType,
-	)); err != nil {
-		log.WithError(err).Error("Write Respawn packet error")
-		return
-	}
+	p.Dimension = int32(Dimension)
 }
