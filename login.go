@@ -65,7 +65,7 @@ func Login(conn *net.Conn) (*Player, error) {
 	if err := p.Scan(&name); err != nil {
 		return nil, fmt.Errorf("scan LoginStart pk error: %w", err)
 	}
-	// LoginSuccess
+	// LoginSuccess // TODO: player whitelist and blacklist
 	err = conn.WritePacket(pk.Marshal(0x02,
 		pk.String(bot.OfflineUUID(string(name)).String()), name))
 	if err != nil {

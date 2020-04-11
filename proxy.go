@@ -15,7 +15,7 @@ import (
 	"sync"
 )
 
-func handleConn(c *mcnet.Conn) {
+func handleConn(ctx context.Context, c *mcnet.Conn) {
 	loge := log.WithField("addr", c.Socket.RemoteAddr())
 	defer c.Close()
 	// handshake
@@ -35,7 +35,7 @@ func handleConn(c *mcnet.Conn) {
 		}
 		loge = loge.WithField("player", p.Name)
 		defer loge.Info("Player left the game")
-		p.Start(loge)
+		p.Start(ctx, loge)
 	default:
 		loge.WithField("intention", intention).Error("Unknown intention in handshake")
 		_ = c.WritePacket(pk.Marshal(0x00, chat.Message{Text: fmt.Sprintf("unknown intention 0x%x in handshake", intention)}))
@@ -81,18 +81,19 @@ type Server struct {
 	*mcnet.Conn
 }
 
-func (p *Player) Start(loge *log.Entry) {
-	server, err := p.connect("localhost:25565")
+func (p *Player) Start(ctx context.Context, loge *log.Entry) {
+	server, err := p.connect(conf.LobbyServer)
 	if err != nil {
 		loge.WithError(err).Error("Connect server error")
 	}
 	for {
 		errChan := make(chan [2]error, 1)
 		cmdChan := make(chan string)
+		subCtx, cancel := context.WithCancel(ctx)
 		go func(server *Server, err chan [2]error) {
 			loge = loge.WithField("server", server.Socket.RemoteAddr())
 			loge.Info("Player join game")
-			errChan <- p.JoinServer(context.TODO(), server, cmdHandler(cmdChan), nil)()
+			errChan <- p.JoinServer(subCtx, server, cmdHandler(cmdChan), nil)()
 			_ = server.Close()
 			loge.Debug("Disconnect server")
 		}(server, errChan)
@@ -101,11 +102,11 @@ func (p *Player) Start(loge *log.Entry) {
 			select {
 			case addr := <-cmdChan:
 				secServer, err := p.connect(addr)
-				if err != nil {
+				if err != nil { // TODO: Tell client the switch operation is fail
 					loge.WithField("server", addr).WithError(err).Error("Connect server error")
 					break
 				}
-				_ = server.Close()
+				cancel()
 				<-errChan
 				server = secServer
 				p.SwitchTo(server)
@@ -113,6 +114,8 @@ func (p *Player) Start(loge *log.Entry) {
 
 			case errs := <-errChan:
 				loge.WithField("errs", errs).Error("Transmit packets error")
+				return
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -177,7 +180,7 @@ func (p *Player) connect(serverAddr string) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("port %s isn't a intiger: %w", portStr, err)
 	}
-	conn, err := mcnet.DialMC(serverAddr)
+	conn, err := mcnet.DialMC(serverAddr) // TODO: server whitelist and blacklist
 	if err != nil {
 		return nil, err
 	}
@@ -250,6 +253,7 @@ type middleFunc func(packet pk.Packet) (pass bool, err error)
 // connect a player and server
 // to stop this, close "stop chan"
 // after completely stop, the returned chan will be closed.
+// TODO: online-mode support
 func (p *Player) JoinServer(ctx context.Context, s *Server, middle1, middle2 middleFunc) (wait func() [2]error) {
 	var wg sync.WaitGroup
 	var errs [2]error
@@ -307,7 +311,7 @@ func (p *Player) SwitchTo(s *Server) {
 
 	if err := p.WritePacket(pk.Marshal(
 		data.Respawn,
-		pk.Int(1), HashSeed, Gamemode, LevelType,
+		pk.Int(1), HashSeed, Gamemode, LevelType, // TODO: 修改为使用一个与当前不通的维度
 	)); err != nil {
 		log.WithError(err).Error("Write Respawn packet error")
 		return
