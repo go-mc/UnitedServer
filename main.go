@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"github.com/Tnze/go-mc/net"
+	"github.com/shiena/ansicolor"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"os"
@@ -13,7 +14,13 @@ import (
 const ProtocolVersion = 578
 
 func main() {
-	initConf()
+	parseConf()
+	if config.DebugMode {
+		log.SetLevel(log.DebugLevel)
+		log.SetFormatter(&log.TextFormatter{ForceColors: true})
+		log.SetOutput(ansicolor.NewAnsiColorWriter(os.Stdout))
+		log.Warn("Starting in debug mode")
+	}
 
 	l, err := net.ListenMC(viper.GetString("ListenAddr"))
 	if err != nil {

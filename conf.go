@@ -1,38 +1,26 @@
 package main
 
 import (
-	"flag"
-	"github.com/shiena/ansicolor"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"os"
 )
 
 var config struct {
 	DebugMode   bool
-	HelpInf     bool
 	MaxPlayers  int
 	ListenAddr  string
 	LobbyServer string
 }
 
-func initConf() {
-	flag.BoolVar(&config.DebugMode, "DebugMode", false, "Start in debug mode")
-	flag.IntVar(&config.MaxPlayers, "MaxPlayers", 20, "Max connections `number`")
-	flag.StringVar(&config.ListenAddr, "ListenAddr", ":25565", "`ip`:port")
-	flag.StringVar(&config.LobbyServer, "LobbyServer", "localhost:25566", "The first server `ip` player joined")
-	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+func parseConf() {
+	pflag.BoolVar(&config.DebugMode, "DebugMode", false, "Start in debug mode")
+	pflag.IntVar(&config.MaxPlayers, "MaxPlayers", 20, "Max connections `number`")
+	pflag.StringVar(&config.ListenAddr, "ListenAddr", ":25565", "`ip`:port")
+	pflag.StringVar(&config.LobbyServer, "LobbyServer", "localhost:25566", "The first server `ip` player joined")
 	pflag.Parse()
 	err := viper.BindPFlags(pflag.CommandLine)
 	if err != nil {
 		log.Fatal()
-	}
-
-	if config.DebugMode {
-		log.SetLevel(log.DebugLevel)
-		log.SetFormatter(&log.TextFormatter{ForceColors: true})
-		log.SetOutput(ansicolor.NewAnsiColorWriter(os.Stdout))
-		log.Warn("Starting in debug mode")
 	}
 }
