@@ -9,6 +9,7 @@ import (
 	mcnet "github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"net"
 	"strconv"
 	"strings"
@@ -83,7 +84,7 @@ type Server struct {
 }
 
 func (p *Player) Start(ctx context.Context, loge *log.Entry) {
-	server, err := p.connect(conf.LobbyServer)
+	server, err := p.connect(viper.GetString("LobbyServer"))
 	if err != nil {
 		loge.WithError(err).Error("Connect server error")
 	}

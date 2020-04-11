@@ -8,6 +8,7 @@ import (
 	"github.com/Tnze/go-mc/chat"
 	"github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
+	"github.com/spf13/viper"
 )
 
 func Status(conn *net.Conn) error {
@@ -35,7 +36,7 @@ func Status(conn *net.Conn) error {
 
 			list.Version.Name = "MCServerSwitch"
 			list.Version.Protocol = ProtocolVersion
-			list.Players.Max = conf.MaxPlayers
+			list.Players.Max = viper.GetInt("MaxPlayers")
 			list.Players.Online = -1
 			list.Players.Sample = []struct{}{}
 			list.Description = chat.Message{Text: "demo"}
