@@ -35,7 +35,7 @@ func Status(conn *net.Conn) error {
 
 			list.Version.Name = "MCServerSwitch"
 			list.Version.Protocol = ProtocolVersion
-			list.Players.Max = 20
+			list.Players.Max = conf.MaxPlayers
 			list.Players.Online = -1
 			list.Players.Sample = []struct{}{}
 			list.Description = chat.Message{Text: "demo"}

@@ -102,9 +102,21 @@ func (p *Player) Start(ctx context.Context, loge *log.Entry) {
 		for {
 			select {
 			case addr := <-cmdChan:
+				_ = p.WritePacket(pk.Marshal(data.ChatMessageClientbound,
+					chat.Message{
+						Text:  "[UnitedServer] Connecting " + addr,
+						Color: "blue",
+					}, pk.Byte(1), // 1 means system message
+				))
 				secServer, err := p.connect(addr)
-				if err != nil { // TODO: Tell client the switch operation is fail
+				if err != nil {
 					loge.WithField("server", addr).WithError(err).Error("Connect server error")
+					_ = p.WritePacket(pk.Marshal(data.ChatMessageClientbound,
+						chat.Message{
+							Text:  fmt.Sprintf("[UnitedServer] Connect server error: %v", err),
+							Color: "red",
+						}, pk.Byte(1), // 1 means system message
+					))
 					break
 				}
 				cancel()
