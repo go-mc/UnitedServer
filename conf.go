@@ -24,7 +24,10 @@ func initConf() {
 	flag.StringVar(&config.LobbyServer, "LobbyServer", "localhost:25566", "The first server `ip` player joined")
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
-	viper.BindPFlags(pflag.CommandLine)
+	err := viper.BindPFlags(pflag.CommandLine)
+	if err != nil {
+		log.Fatal()
+	}
 
 	if config.DebugMode {
 		log.SetLevel(log.DebugLevel)
