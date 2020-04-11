@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/Tnze/go-mc/chat"
@@ -11,7 +12,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time"
+	"sync"
 )
 
 func handleConn(c *mcnet.Conn) {
@@ -23,40 +24,18 @@ func handleConn(c *mcnet.Conn) {
 		loge.WithError(err).Error("Handshake error")
 	}
 	switch intention {
-	case 0x01:
+	case 0x01: // ping & list
 		if err := Status(c); err != nil {
 			loge.WithError(err).Error("Send status packet error")
 		}
-	case 0x02:
-		// client login
+	case 0x02: // client login
 		p, err := Login(c)
 		if err != nil {
 			loge.WithError(err).Error("Player login fail")
 		}
-		s, err := p.Connect("localhost:25565")
-		if err != nil {
-			loge.WithError(err).Error("Connect server error")
-		}
-		stop := make(chan struct{})
-		stoped := p.JoinServer(stop, s)
-		wait := time.After(time.Second * 10)
-		for {
-			select {
-			case <-stoped:
-				return
-			case <-wait:
-				s, err := p.Connect("localhost:25567")
-				if err != nil {
-					loge.WithError(err).Error("Connect server error")
-				}
-				close(stop)
-				<-stoped
-				p.SwitchTo(s)
-				stop = make(chan struct{})
-				stoped = p.JoinServer(stop, s)
-			}
-		}
-
+		loge = loge.WithField("player", p.Name)
+		defer loge.Info("Player left the game")
+		p.Start(loge)
 	default:
 		loge.WithField("intention", intention).Error("Unknown intention in handshake")
 		_ = c.WritePacket(pk.Marshal(0x00, chat.Message{Text: fmt.Sprintf("unknown intention 0x%x in handshake", intention)}))
@@ -99,10 +78,97 @@ type Player struct {
 }
 
 type Server struct {
-	sonn *mcnet.Conn
+	*mcnet.Conn
 }
 
-func (p *Player) Connect(serverAddr string) (*Server, error) {
+func (p *Player) Start(loge *log.Entry) {
+	server, err := p.connect("localhost:25565")
+	if err != nil {
+		loge.WithError(err).Error("Connect server error")
+	}
+	for {
+		errChan := make(chan [2]error, 1)
+		cmdChan := make(chan string)
+		go func(server *Server, err chan [2]error) {
+			loge = loge.WithField("server", server.Socket.RemoteAddr())
+			loge.Info("Player join game")
+			errChan <- p.JoinServer(context.TODO(), server, cmdHandler(cmdChan), nil)()
+			_ = server.Close()
+			loge.Debug("Disconnect server")
+		}(server, errChan)
+	CmdLoop:
+		for {
+			select {
+			case addr := <-cmdChan:
+				secServer, err := p.connect(addr)
+				if err != nil {
+					loge.WithField("server", addr).WithError(err).Error("Connect server error")
+					break
+				}
+				_ = server.Close()
+				<-errChan
+				server = secServer
+				p.SwitchTo(server)
+				break CmdLoop
+
+			case errs := <-errChan:
+				loge.WithField("errs", errs).Error("Transmit packets error")
+				return
+			}
+		}
+	}
+}
+
+func cmdHandler(cmdChan chan string) middleFunc {
+	return func(packet pk.Packet) (pass bool, err error) {
+		// handle command
+		if packet.ID == data.ChatMessageServerbound {
+			var msg pk.String
+			if err := packet.Scan(&msg); err != nil {
+				return false, errors.New("handle chat message error")
+			}
+			if strings.HasPrefix(string(msg), "/connect ") {
+				log.Infof("%s", msg)
+				select { // non-blocking send
+				case cmdChan <- strings.TrimPrefix(string(msg), "/connect "):
+				default:
+				}
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+}
+
+// transmit continued read packet from src, then write to dst.
+// The middle func will be called for each packet before send to dst.
+// The packet will be transmit only if middle func return pass==true.
+func transmit(ctx context.Context, dst mcnet.Writer, src mcnet.Reader, middle middleFunc) error {
+	for {
+		select {
+		default:
+			packet, err := src.ReadPacket()
+			if err != nil {
+				return fmt.Errorf("recv packet error: %w", err)
+			}
+			if middle != nil {
+				pass, err := middle(packet)
+				if err != nil {
+					return fmt.Errorf("middle func error: %w", err)
+				} else if !pass {
+					break // ignore this packet
+				}
+			}
+			if err := dst.WritePacket(packet); err != nil {
+				return fmt.Errorf("send packet error: %w", err)
+			}
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
+func (p *Player) connect(serverAddr string) (*Server, error) {
 	addr, portStr, err := net.SplitHostPort(serverAddr)
 	if err != nil {
 		return nil, fmt.Errorf("look up port for %s error: %w", serverAddr, err)
@@ -136,7 +202,7 @@ func (p *Player) Connect(serverAddr string) (*Server, error) {
 		return nil, fmt.Errorf("send login start packect fail: %w", err)
 	}
 	for {
-		//Recive Packet
+		//Receive Packet
 		var pack pk.Packet
 		pack, err = conn.ReadPacket()
 		if err != nil {
@@ -163,7 +229,7 @@ func (p *Player) Connect(serverAddr string) (*Server, error) {
 		case 0x02: //Login Success
 			// uuid, l := pk.UnpackString(pack.Data)
 			// name, _ := unpackString(pack.Data[l:])
-			return &Server{sonn: conn}, nil //switches the connection state to PLAY.
+			return &Server{Conn: conn}, nil //switches the connection state to PLAY.
 		case 0x03: //Set Compression
 			var threshold pk.VarInt
 			if err := pack.Scan(&threshold); err != nil {
@@ -179,68 +245,31 @@ func (p *Player) Connect(serverAddr string) (*Server, error) {
 	}
 }
 
+type middleFunc func(packet pk.Packet) (pass bool, err error)
+
 // connect a player and server
 // to stop this, close "stop chan"
 // after completely stop, the returned chan will be closed.
-func (p *Player) JoinServer(stop <-chan struct{}, s *Server) <-chan struct{} {
-	ret := make(chan struct{})
-	s1 := make(chan struct{})
+func (p *Player) JoinServer(ctx context.Context, s *Server, middle1, middle2 middleFunc) (wait func() [2]error) {
+	var wg sync.WaitGroup
+	var errs [2]error
+	wg.Add(2)
 	go func() {
-		for {
-			select {
-			default:
-				packet, err := s.sonn.ReadPacket()
-				if err != nil {
-					log.WithError(err).Error("recv target server packet error")
-					return
-				}
-				if err := p.WritePacket(packet); err != nil {
-					log.WithError(err).Error("send packet to client error")
-					return
-				}
-			case <-stop:
-				s1 <- struct{}{}
-				return
-			}
-		}
+		defer wg.Done()
+		errs[0] = transmit(ctx, s, p, middle1)
 	}()
 	go func() {
-		for {
-			select {
-			default:
-				packet, err := p.ReadPacket()
-				if err != nil {
-					log.WithError(err).Error("recv client packet error")
-					return
-				}
-				// handle command
-				if packet.ID == data.ChatMessageServerbound {
-					var msg pk.String
-					if err := packet.Scan(&msg); err != nil {
-						log.WithError(err).Error("handle chat message error")
-						return
-					}
-					if strings.HasPrefix(string(msg), "/server") {
-						log.Infof("<%s> %s", p.Name, msg)
-						continue
-					}
-				}
-				if err := s.sonn.WritePacket(packet); err != nil {
-					log.WithError(err).Error("send packet to target server error")
-					return
-				}
-			case <-stop:
-				<-s1
-				close(ret)
-				return
-			}
-		}
+		defer wg.Done()
+		errs[1] = transmit(ctx, p, s, middle2)
 	}()
-	return ret
+	return func() [2]error {
+		wg.Wait()
+		return errs
+	}
 }
 
 func (p *Player) SwitchTo(s *Server) {
-	packet, err := s.sonn.ReadPacket()
+	packet, err := s.ReadPacket()
 	if err != nil {
 		log.WithError(err).Error("Read JoinGame packet error")
 		return
