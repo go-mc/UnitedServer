@@ -14,6 +14,6 @@ func parseConf() {
 	pflag.Parse()
 	err := viper.BindPFlags(pflag.CommandLine)
 	if err != nil {
-		log.Fatal("Fatal error parse arg: %s \n", err)
+		log.WithError(err).Fatal("Fatal error when parsing args")
 	}
 }
