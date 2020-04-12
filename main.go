@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-const ProtocolVersion = 578
+const ServerName = "UnitedServer Alpha"
 
 func main() {
 	parseConf()

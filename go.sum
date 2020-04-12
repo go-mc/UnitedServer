@@ -2,6 +2,8 @@ cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMT
 github.com/BurntSushi/toml v0.3.1 h1:WXkYYl6Yr3qBf1K79EBnL4mak0OimBfB0XUf9Vl28OQ=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
+github.com/Tnze/go-mc v0.0.0-20200412065946-b509967247ee h1:s6kHGwDbM2dxHPQ8HD+Id/rDve3lKX4KO2RD8CD9uUw=
+github.com/Tnze/go-mc v0.0.0-20200412065946-b509967247ee/go.mod h1:LKj1KKSj4m58fpJaTmOHC3DdQKJ1RSfEGHFR1zMLSF8=
 github.com/Tnze/go-mc v1.15.2-0.20200408080201-cf150c16fa2e h1:PYxK1zHIPH4sPrTPwG/r1vsLI4wMeVeOETNqVdjYdFA=
 github.com/Tnze/go-mc v1.15.2-0.20200408080201-cf150c16fa2e/go.mod h1:LKj1KKSj4m58fpJaTmOHC3DdQKJ1RSfEGHFR1zMLSF8=
 github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc/go.mod h1:LOuyumcjzFXgccqObfd/Ljyb9UuFJ6TxHnclSeseNhc=
