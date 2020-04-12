@@ -26,42 +26,40 @@ func GetProtocol(ver int) Protocol {
 	case ver == 47: // 1.8.9 to 1.8
 		return NewProto8()
 	default:
-		return NewUnsupported()
+		return unsupported{
+			unchanged: unchanged{versionID: Latest},
+		}
 	}
 }
 
 type unsupported struct {
-	generalChat
-	generalDisconnect
-	generalCmdInject
+	unchanged
 	generalDimRecorder
 }
 
-func NewUnsupported() Protocol     { return unsupported{} }
-func (unsupported) VersionID() int { return Latest }
-func (unsupported) Support() bool  { return false }
-
+func (unsupported) Support() bool                                                 { return false } // override
 func (unsupported) JoinGame2Respawn(pk.Packet, int32) ([]pk.Packet, int32, error) { return nil, 0, nil }
 
 // chat.TranslateMsg("multiplayer.disconnect.outdated_client", chat.Text(ServerName))
 
-type generalChat byte
-
-func (g generalChat) SysChat(msg chat.Message) pk.Packet {
-	return pk.Marshal(byte(g), msg, pk.Byte(1))
+type unchanged struct {
+	versionID  int
+	disconnect byte
+	chatClient byte
+	cmdInject  byte
 }
 
-type generalDisconnect byte
-
-func (g generalDisconnect) Disconnect(reason chat.Message) pk.Packet {
-	return pk.Marshal(byte(g), reason)
+func (u unchanged) Support() bool  { return true }
+func (u unchanged) VersionID() int { return u.versionID }
+func (u unchanged) SysChat(msg chat.Message) pk.Packet {
+	return pk.Marshal(u.chatClient, msg, pk.Byte(1))
 }
-
-type generalCmdInject byte
-
-func (g generalCmdInject) CmdInjector(cmdHandler func(cmd string) (bool, error)) func(packet pk.Packet) (pass bool, err error) {
+func (u unchanged) Disconnect(reason chat.Message) pk.Packet {
+	return pk.Marshal(u.disconnect, reason)
+}
+func (u unchanged) CmdInjector(cmdHandler func(cmd string) (bool, error)) func(packet pk.Packet) (pass bool, err error) {
 	return func(packet pk.Packet) (pass bool, err error) {
-		if packet.ID == byte(g) {
+		if packet.ID == u.cmdInject {
 			var msg pk.String
 			if err := packet.Scan(&msg); err != nil {
 				return false, errors.New("handle chat message error")

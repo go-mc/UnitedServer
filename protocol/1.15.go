@@ -7,22 +7,21 @@ import (
 )
 
 type proto15 struct {
-	generalChat
-	generalDisconnect
-	generalCmdInject
+	unchanged
 	generalDimRecorder
 }
 
 func NewProto15() Protocol {
 	return proto15{
-		generalChat:        0x0F,
-		generalDisconnect:  0x1B,
-		generalCmdInject:   0x03,
+		unchanged: unchanged{
+			versionID:  578,
+			disconnect: 0x1b,
+			chatClient: 0x0f,
+			cmdInject:  0x03,
+		},
 		generalDimRecorder: [2]byte{0x26, 0x3B},
 	}
 }
-func (proto15) VersionID() int { return 578 }
-func (proto15) Support() bool  { return true }
 
 func (proto15) JoinGame2Respawn(packet pk.Packet, dim int32) ([]pk.Packet, int32, error) {
 	if packet.ID != 0x26 {

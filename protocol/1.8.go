@@ -7,22 +7,21 @@ import (
 )
 
 type proto8 struct {
-	generalChat
-	generalDisconnect
-	generalCmdInject
+	unchanged
 	generalDimRecorder
 }
 
 func NewProto8() Protocol {
 	return proto8{
-		generalChat:        0x02,
-		generalDisconnect:  0x40,
-		generalCmdInject:   0x01,
+		unchanged: unchanged{
+			versionID:  47,
+			disconnect: 0x40,
+			chatClient: 0x02,
+			cmdInject:  0x01,
+		},
 		generalDimRecorder: [2]byte{0x01, 0x07},
 	}
 }
-func (proto8) VersionID() int { return 47 }
-func (proto8) Support() bool  { return true }
 
 func (proto8) JoinGame2Respawn(packet pk.Packet, dim int32) ([]pk.Packet, int32, error) {
 	if packet.ID != 0x01 {
