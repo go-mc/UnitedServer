@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"errors"
+	"fmt"
 	"github.com/Tnze/go-mc/chat"
 	pk "github.com/Tnze/go-mc/net/packet"
 	"sync/atomic"
@@ -14,17 +15,23 @@ type Protocol interface {
 	Support() bool
 	SysChat(msg chat.Message) pk.Packet
 	Disconnect(reason chat.Message) pk.Packet
-	JoinGame2Respawn(JoinGame pk.Packet, dim int32) (p []pk.Packet, newDim int32, err error)
 	CmdInjector(func(cmd string) (bool, error)) func(packet pk.Packet) (pass bool, err error)
 	DimRecorder(*int32) func(packet pk.Packet) (pass bool, err error)
+	ToRespawn(packet pk.Packet, dim int32) ([]pk.Packet, int32, error)
 }
 
 func GetProtocol(ver int) Protocol {
 	switch {
-	case ver == 578: // 1.15.2
-		return NewProto15()
+	//case ver == 578: // 1.15.2
+	//	return NewProto15()
 	case ver == 47: // 1.8.9 to 1.8
-		return NewProto8()
+		return supported{
+			unchanged: unchanged{versionID: 47, disconnect: 0x40, chatClient: 0x02, cmdInject: 0x01},
+			dimRecorder: dimRecorder{joinGame: 0x01, respawn: 0x07,
+				JoinGamePacket: joinGame14w29a{joinGameID: 0x01, respawnID: 0x07},
+				RespawnPacket:  respawn13w42a{packetID: 0x07},
+			},
+		}
 	default:
 		return unsupported{
 			unchanged: unchanged{versionID: Latest},
@@ -32,13 +39,17 @@ func GetProtocol(ver int) Protocol {
 	}
 }
 
-type unsupported struct {
+type supported struct {
 	unchanged
-	generalDimRecorder
+	dimRecorder
 }
 
-func (unsupported) Support() bool                                                 { return false } // override
-func (unsupported) JoinGame2Respawn(pk.Packet, int32) ([]pk.Packet, int32, error) { return nil, 0, nil }
+type unsupported struct {
+	unchanged
+	dimRecorder
+}
+
+func (unsupported) Support() bool { return false } // override
 
 // chat.TranslateMsg("multiplayer.disconnect.outdated_client", chat.Text(ServerName))
 
@@ -70,22 +81,39 @@ func (u unchanged) CmdInjector(cmdHandler func(cmd string) (bool, error)) func(p
 	}
 }
 
-// [2]byte{JoinGame, Respawn}
-type generalDimRecorder [2]byte
+type dimRecorder struct {
+	joinGame byte
+	respawn  byte
+	JoinGamePacket
+	RespawnPacket
+}
 
-func (g generalDimRecorder) DimRecorder(dim *int32) func(packet pk.Packet) (pass bool, err error) {
+type JoinGamePacket interface {
+	// convert JoinGame packet into Respawn packet
+	// client programs cannot re-spawn to the same dimension they are already in.
+	// so we send a extra Respawn packet to respawn them to another dimension first.
+	ToRespawn(packet pk.Packet, dim int32) ([]pk.Packet, int32, error)
+	Dimension(packet pk.Packet) (int32, error)
+}
+
+type RespawnPacket interface {
+	Dimension(packet pk.Packet) (int32, error)
+}
+
+func (d dimRecorder) DimRecorder(dim *int32) func(packet pk.Packet) (pass bool, err error) {
 	return func(packet pk.Packet) (pass bool, err error) {
-		var dimension pk.Byte
-		if packet.ID == g[0] {
-			if err := packet.Scan(new(pk.Int), new(pk.UnsignedByte), &dimension); err != nil {
-				return false, errors.New("handle JoinGame packet error")
+		if packet.ID == d.joinGame {
+			dimension, err := d.JoinGamePacket.Dimension(packet)
+			if err != nil {
+				return false, fmt.Errorf("parse JoinGame packet error: %w", err)
 			}
-			atomic.StoreInt32(dim, int32(dimension))
-		} else if packet.ID == g[1] {
-			if err := packet.Scan(&dimension); err != nil {
-				return false, errors.New("handle Respawn packet error")
+			atomic.StoreInt32(dim, dimension)
+		} else if packet.ID == d.respawn {
+			dimension, err := d.RespawnPacket.Dimension(packet)
+			if err != nil {
+				return false, fmt.Errorf("parse Respawn packet error: %w", err)
 			}
-			atomic.StoreInt32(dim, int32(dimension))
+			atomic.StoreInt32(dim, dimension)
 		}
 		return true, nil
 	}

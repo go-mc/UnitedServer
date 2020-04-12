@@ -3,57 +3,61 @@ package protocol
 import (
 	"fmt"
 	pk "github.com/Tnze/go-mc/net/packet"
-	log "github.com/sirupsen/logrus"
 )
 
-type proto8 struct {
-	unchanged
-	generalDimRecorder
+type joinGame14w29a struct {
+	joinGameID, respawnID byte
+
+	EID        pk.Int
+	Gamemode   pk.UnsignedByte
+	Dim        pk.Byte
+	Difficulty pk.UnsignedByte
+	MaxPlayers pk.UnsignedByte
+	LevelType  pk.String
+	DebugInfo  pk.Boolean
 }
 
-func NewProto8() Protocol {
-	return proto8{
-		unchanged: unchanged{
-			versionID:  47,
-			disconnect: 0x40,
-			chatClient: 0x02,
-			cmdInject:  0x01,
-		},
-		generalDimRecorder: [2]byte{0x01, 0x07},
+func (j *joinGame14w29a) scan(packet pk.Packet) error {
+	if packet.ID != j.joinGameID {
+		return fmt.Errorf("packet id 0x%02x is not JoinGame", packet.ID)
 	}
+	return packet.Scan(
+		&j.EID, &j.Gamemode, &j.Dim, &j.Difficulty,
+		&j.MaxPlayers, &j.LevelType, &j.DebugInfo)
 }
 
-func (proto8) JoinGame2Respawn(packet pk.Packet, dim int32) ([]pk.Packet, int32, error) {
-	if packet.ID != 0x01 {
-		return nil, 0, fmt.Errorf("packet id 0x%02x is not JoinGame", packet.ID)
+func (j joinGame14w29a) ToRespawn(packet pk.Packet, dim int32) ([]pk.Packet, int32, error) {
+	if err := j.scan(packet); err != nil {
+		return nil, dim, err
 	}
-	// parse JoinGame packet
-	var (
-		EID        pk.Int
-		Gamemode   pk.UnsignedByte
-		Dimension  pk.Byte
-		Difficulty pk.UnsignedByte
-		MaxPlayers pk.UnsignedByte
-		LevelType  pk.String
-		DebugInfo  pk.Boolean
-	)
-	if err := packet.Scan(
-		&EID, &Gamemode, &Dimension, &Difficulty,
-		&MaxPlayers, &LevelType, &DebugInfo); err != nil {
-		log.WithError(err).Error("Scan JoinGame packet error")
+	respawn := pk.Marshal(j.respawnID, pk.Int(j.Dim), j.Difficulty, j.Gamemode, j.LevelType)
+	if int32(j.Dim) != dim {
+		return []pk.Packet{respawn}, int32(j.Dim), nil
 	}
-
-	respawn := pk.Marshal(0x07, pk.Int(Dimension), Difficulty, Gamemode, LevelType)
-	if int32(Dimension) != dim {
-		return []pk.Packet{respawn}, int32(Dimension), nil
-	}
-	// client programs cannot re-spawn to the same dimension they are already in.
-	// so we send a extra Respawn packet to respawn them to another dimension first.
 	otherDim := pk.Int(0)
-	if otherDim == pk.Int(Dimension) {
+	if otherDim == pk.Int(j.Dim) {
 		otherDim = 1
 	}
-	extra := pk.Marshal(0x07, otherDim, Difficulty, Gamemode, LevelType)
+	extra := pk.Marshal(j.respawnID, otherDim, j.Difficulty, j.Gamemode, j.LevelType)
+	return []pk.Packet{extra, respawn}, int32(j.Dim), nil
+}
 
-	return []pk.Packet{extra, respawn}, int32(Dimension), nil
+func (j joinGame14w29a) Dimension(packet pk.Packet) (int32, error) {
+	if err := j.scan(packet); err != nil {
+		return 0, err
+	}
+	return int32(j.Dim), nil
+}
+
+type respawn13w42a struct {
+	packetID   byte
+	Dim        pk.Int
+	Difficulty pk.UnsignedByte
+	Gamemode   pk.UnsignedByte
+	LevelType  pk.String
+}
+
+func (r respawn13w42a) Dimension(packet pk.Packet) (int32, error) {
+	err := packet.Scan(&r.Dim, &r.Difficulty, &r.Gamemode, &r.LevelType)
+	return int32(r.Dim), err
 }

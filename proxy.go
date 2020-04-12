@@ -282,7 +282,7 @@ func (p *Player) SwitchTo(s *Server, proto protocol.Protocol) {
 		return
 	}
 	// returned respawn may be more then one
-	respawn, dim, err := proto.JoinGame2Respawn(packet, atomic.LoadInt32(&p.Dimension))
+	respawn, dim, err := proto.ToRespawn(packet, atomic.LoadInt32(&p.Dimension))
 	for _, v := range respawn {
 		if err := p.WritePacket(v); err != nil {
 			log.WithError(err).Error("Write Respawn packet error")
