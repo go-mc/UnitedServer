@@ -8,6 +8,8 @@ import (
 	"github.com/Tnze/go-mc/chat"
 	"github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
+	"github.com/spf13/viper"
+	"sync/atomic"
 )
 
 func Status(conn *net.Conn) error {
@@ -35,8 +37,8 @@ func Status(conn *net.Conn) error {
 
 			list.Version.Name = "MCServerSwitch"
 			list.Version.Protocol = ProtocolVersion
-			list.Players.Max = conf.MaxPlayers
-			list.Players.Online = -1
+			list.Players.Max = viper.GetInt("MaxPlayers")
+			list.Players.Online = int(atomic.LoadInt64(&countOnline))
 			list.Players.Sample = []struct{}{}
 			list.Description = chat.Message{Text: "demo"}
 
@@ -65,6 +67,15 @@ func Login(conn *net.Conn) (*Player, error) {
 	if err := p.Scan(&name); err != nil {
 		return nil, fmt.Errorf("scan LoginStart pk error: %w", err)
 	}
+	// Check max players
+	if !counterInc() {
+		err := conn.WritePacket(pk.Marshal(0x00,
+			chat.Message{Translate: "multiplayer.disconnect.server_full"}))
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("server full")
+	}
 	// LoginSuccess // TODO: player whitelist and blacklist
 	err = conn.WritePacket(pk.Marshal(0x02,
 		pk.String(bot.OfflineUUID(string(name)).String()), name))
@@ -76,4 +87,23 @@ func Login(conn *net.Conn) (*Player, error) {
 		Conn: conn,
 		Name: string(name),
 	}, nil
+}
+
+var countOnline int64
+
+func counterInc() bool {
+	max := int64(viper.GetInt("MaxPlayers"))
+	for {
+		online := atomic.LoadInt64(&countOnline)
+		if online >= max {
+			return false // server is full
+		}
+		if atomic.CompareAndSwapInt64(&countOnline, online, online+1) {
+			return true // successfully join
+		}
+	}
+}
+
+func counterDec() {
+	atomic.AddInt64(&countOnline, -1)
 }

@@ -9,6 +9,7 @@ import (
 	mcnet "github.com/Tnze/go-mc/net"
 	pk "github.com/Tnze/go-mc/net/packet"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"net"
 	"strconv"
 	"strings"
@@ -32,7 +33,9 @@ func handleConn(ctx context.Context, c *mcnet.Conn) {
 		p, err := Login(c)
 		if err != nil {
 			loge.WithError(err).Error("Player login fail")
+			return
 		}
+		defer counterDec() // decrease counter when player leave
 		loge = loge.WithField("player", p.Name)
 		defer loge.Info("Player left the game")
 		p.Start(ctx, loge)
@@ -83,9 +86,10 @@ type Server struct {
 }
 
 func (p *Player) Start(ctx context.Context, loge *log.Entry) {
-	server, err := p.connect(conf.LobbyServer)
+	server, err := p.connect(viper.GetString("LobbyServer"))
 	if err != nil {
 		loge.WithError(err).Error("Connect server error")
+		return
 	}
 	for {
 		errChan := make(chan [2]error, 1)
