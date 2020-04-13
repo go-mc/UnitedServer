@@ -22,8 +22,14 @@ type Protocol interface {
 
 func GetProtocol(ver int) Protocol {
 	switch {
-	//case ver == 578: // 1.15.2
-	//	return NewProto15()
+	case ver == 578: // 1.15.2
+		return supported{
+			unchanged: unchanged{versionID: 578, disconnect: 0x1b, chatClient: 0x0f, cmdInject: 0x03},
+			dimRecorder: dimRecorder{joinGame: 0x26, respawn: 0x3b,
+				JoinGamePacket: joinGame19w36a{joinGameID: 0x26, respawnID: 0x3b},
+				RespawnPacket:  respawn19w36a{packetID: 0x3b},
+			},
+		}
 	case ver == 47: // 1.8.9 to 1.8
 		return supported{
 			unchanged: unchanged{versionID: 47, disconnect: 0x40, chatClient: 0x02, cmdInject: 0x01},
