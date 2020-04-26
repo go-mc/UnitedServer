@@ -35,7 +35,7 @@ func Status(conn *net.Conn) error {
 				FavIcon     string       `json:"favicon,omitempty"`
 			}
 
-			list.Version.Name = "MCServerSwitch"
+			list.Version.Name = UnitedServerVersion
 			list.Version.Protocol = ProtocolVersion
 			list.Players.Max = viper.GetInt("MaxPlayers")
 			list.Players.Online = int(atomic.LoadInt64(&countOnline))

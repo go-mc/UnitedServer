@@ -11,6 +11,7 @@ import (
 	"sync"
 )
 
+const UnitedServerVersion = "UnitedServer Alpha"
 const ProtocolVersion = 578
 
 func main() {

@@ -96,6 +96,12 @@ func (p *Player) Start(ctx context.Context, loge *log.Entry) {
 		cmdChan := make(chan string)
 		subCtx, cancel := context.WithCancel(ctx)
 		go func(server *Server, err chan [2]error) {
+			if err := server.WritePacket(pk.Marshal( // Plugin Message Serverbound
+				0x0B, pk.Identifier("UnitedServer:brand"), pk.String(UnitedServerVersion),
+			)); err != nil {
+				errChan <- [2]error{err, nil}
+				return
+			}
 			loge = loge.WithField("server", server.Socket.RemoteAddr())
 			loge.Info("Player join server")
 			errChan <- p.JoinServer(subCtx, server, cmdHandler(cmdChan, loge), dimRecorder(&p.Dimension))()
@@ -271,10 +277,18 @@ func (p *Player) connect(serverAddr string) (*Server, error) {
 			}
 			conn.SetThreshold(int(threshold))
 		case 0x04: //Login Plugin Request
-			return nil, errors.New("this demo don't support login plugin request")
-			//if err := handlePluginPacket(c, pack); err != nil {
-			//	return fmt.Errorf("bot: handle plugin packet fail: %v", err)
-			//}
+			// TODO: Handle Login Plugin Request
+			var MessageID pk.VarInt
+			var Channel pk.Identifier
+			if err := pack.Scan(&MessageID, &Channel); err != nil {
+				return nil, fmt.Errorf("read login plugin request error: %w", err)
+			}
+			if err := conn.WritePacket(pk.Marshal(
+				0x02, // Login Plugin Response
+				MessageID, pk.Boolean(false),
+			)); err != nil {
+				return nil, err
+			}
 		}
 	}
 }
