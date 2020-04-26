@@ -21,22 +21,34 @@ type Protocol interface {
 }
 
 func GetProtocol(ver int) Protocol {
+	// Get packet IDs for current version
 	joinGame := joinGameID[ver]
+	disconnect := disconnectID[ver]
+	chatClient := chatMessageClientboundID[ver]
+	chatServer := chatMessageServerboundID[ver]
+	respawn := respawnID[ver]
+	// Generate protocol
+	unc := unchanged{
+		versionID:  ver,
+		disconnect: disconnect,
+		chatClient: chatClient,
+		cmdInject:  chatServer,
+	}
 	switch {
 	case ver >= 578: // 1.15.2
 		return supported{
-			unchanged: unchanged{versionID: ver, disconnect: 0x1b, chatClient: 0x0f, cmdInject: 0x03},
-			dimRecorder: dimRecorder{joinGame: joinGame, respawn: 0x3b,
-				JoinGamePacket: joinGame19w36a{joinGameID: joinGame, respawnID: 0x3b},
-				RespawnPacket:  respawn19w36a{packetID: 0x3b},
+			unchanged: unc,
+			dimRecorder: dimRecorder{joinGame: joinGame, respawn: respawn,
+				JoinGamePacket: joinGame19w36a{joinGameID: joinGame, respawnID: respawn},
+				RespawnPacket:  respawn19w36a{packetID: respawn},
 			},
 		}
 	case ver >= 47: // 1.8.9 to 1.8
 		return supported{
-			unchanged: unchanged{versionID: ver, disconnect: 0x40, chatClient: 0x02, cmdInject: 0x01},
-			dimRecorder: dimRecorder{joinGame: joinGame, respawn: 0x07,
-				JoinGamePacket: joinGame14w29a{joinGameID: joinGame, respawnID: 0x07},
-				RespawnPacket:  respawn13w42a{packetID: 0x07},
+			unchanged: unc,
+			dimRecorder: dimRecorder{joinGame: joinGame, respawn: respawn,
+				JoinGamePacket: joinGame14w29a{joinGameID: joinGame, respawnID: respawn},
+				RespawnPacket:  respawn13w42a{packetID: respawn},
 			},
 		}
 	default:
