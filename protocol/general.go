@@ -39,8 +39,24 @@ func GetProtocol(ver int) Protocol {
 		return supported{
 			unchanged: unc,
 			dimRecorder: dimRecorder{joinGame: joinGame, respawn: respawn,
-				JoinGamePacket: joinGame19w36a{joinGameID: joinGame, respawnID: respawn},
+				JoinGamePacket: joinGame19w13a{joinGameID: joinGame, respawnID: respawn},
 				RespawnPacket:  respawn19w36a{packetID: respawn},
+			},
+		}
+	case ver >= 464:
+		return supported{
+			unchanged: unc,
+			dimRecorder: dimRecorder{joinGame: joinGame, respawn: respawn,
+				JoinGamePacket: joinGame19w13a{joinGameID: joinGame, respawnID: respawn},
+				RespawnPacket:  respawn19w11a{packetID: respawn},
+			},
+		}
+	case ver >= 108:
+		return supported{
+			unchanged: unc,
+			dimRecorder: dimRecorder{joinGame: joinGame, respawn: respawn,
+				JoinGamePacket: joinGame19w11a{joinGameID: joinGame, respawnID: respawn},
+				RespawnPacket:  respawn13w42a{packetID: respawn},
 			},
 		}
 	case ver >= 47: // 1.8.9 to 1.8
